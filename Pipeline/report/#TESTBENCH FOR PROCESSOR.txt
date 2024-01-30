@@ -1,0 +1,153 @@
+#TESTBENCH FOR PROCESSOR
+
+## LOAD DATA FOR TESTING 
+### USING X1 TO X10 AS VARIABLES
+addi x31 x0 0x7ff
+
+### USING X29 TO COUNT THE BRANCH THAT IS MISS WHEN NOT-TAKEN
+
+lw x1 0x101(x31)
+lw x2 0x101(x31)
+lw x3 0x101(x31)
+lw x4 0x101(x31)
+lw x5 0x101(x31)
+
+add x6 x0 x1
+add x7 x0 x2
+add x8 x0 x3
+add x9 x0 x4
+add x10 x0 x5
+
+## TEST CASE 1: TEST WITH NO DATA HAZARD
+
+				beq x1 x6 	CHECK_1
+
+END_CHECK_1: 
+				beq x2 x7 	CHECK_2
+                
+END_CHECK_2:
+				beq x3 x8 	CHECK_3
+                
+END_CHECK_3:
+				beq x3 x8 	CHECK_4               
+
+
+CHECK_1:
+			addi x11 x1 111					# x11 = x1 + 111
+			addi x16 x6 121					# x16 = x6 + 121 = x11
+			bne x11 x16 END					# Not Jump
+            jal x29 END_CHECK_1
+            
+CHECK_2:
+			or x12 x2 x7					# x12 = x2 = x7
+			bne x12 x2 END					# Not Jump
+			bne x12 x7 END					# Not Jump
+			xor x17 x12 x7					# x17 = x12 = x7
+			bne x17 x0 END 					# Not Jump
+            jal x29 END_CHECK_2
+            
+CHECK_3:
+			sub x13 x3 x8 
+			bne x13 x0 END					# x13 = 0 (x3 = x8)
+            and x18 x13 x8					# x18 = x13 (= x8)
+            or x13 x3 x8					# x13 = x3 (= x8)
+            bne x13 x18 END					# Not Jump	
+            jal x29 END_CHECK_3
+            
+CHECK_4:
+			sw x4 0x0(x0)
+            lw x14 0x0(x0)
+            lh x15 0x0(x0)
+            lb x16 0x0(x0)
+            lhu x17 0x0(x0)
+            lbu x18 0x0(x0)
+            
+            or x19 x4 x9 					# x19 = x4 (= x9)
+            bne x19 x14 END					# Not Jump	
+            bltu x15 x17 END				# Not Jump
+            bltu x16 x18 END				# Not Jump
+            
+            jal x29 CASE_2
+            
+            
+       
+# TEST CASE 2: TEST WITH DATA HARZARD 
+CASE_2: 	auipc x29 0
+## EX-MEM
+		add x11 x1 x6 				# x11 = 2.x1	
+        add x16 x11 x6				# x16 = 3.x1	
+        sub x17 x16 x1				# x17 = 2.x1
+        or x18 x1 x6				# x18 = x1
+        sub x19 x18 x1				# x19 = 0
+        
+   # Check 
+   		bne x19 x0 END				# Not Jump
+        bne x17 x11 END				# Not Jump
+
+## EX-MEM with load 
+		lw x11 0x0(x31)					# load from sw
+        add x16 x0 x11					# x16 = x11
+        lh x12 0x0(x31)					# load from sw
+        or x17 x0 x12					# x17 = x12
+        lb x13 0x0(x31)					# load from sw
+        and x18 x13 x0					# x18 = 0
+        
+    # Check
+    	bne x18 x0 END				# Not Jump
+        bne x17 x12 END				# Not Jump
+        bne x16 x11 END				# Not Jump
+        
+## EX-MEM and EX-WB
+		add x11 x2 x7 				# x11 = 2.x2 
+        add x16 x11 x6				# x16 = 3.x2
+        sub x17 x16 x11 			# x17 = x2
+        or x18 x17 x6				# x18 = x2
+        and x19 x18 x17				# x19 = x2
+        
+   # Check
+   		bne x19 x18 END 
+        
+## ID-WB 
+		add x11 x3 x8 				# x11 = 2.x3 
+        add x16 x11 x8				# x16 = 3.x3
+        sub x17 x16 x11 			# x17 = x3
+        or x18 x17 x11 				# x18 > x11 > x3 = x8 (Unsigned)
+        
+  # Check
+        bne x17 x3 END				# Not Jump
+        
+# TEST CASE 3: PROGRAM WITH LOOP AND HAZARD COMBINATION
+addi x20 x20 0						# Reset the counter
+				addi x11 x1 20				
+       			addi x16 x6 30			     
+CHECK_LOOP1:	bne x11 x16 LOOP1
+
+        		addi x12 x1 30				
+       			addi x17 x6 40
+CHECK_LOOP2:	bne x12 x17 LOOP2  
+
+				addi x13 x1 40				
+       			addi x18 x6 50
+CHECK_LOOP3:	bne x13 x18 LOOP3 
+
+				jal x29 END_CHECK
+        
+LOOP1:			addi x16 x16 -1
+				addi x20 x20 1
+                jal x21 CHECK_LOOP1
+                
+LOOP2:			addi x17 x17 -1
+				addi x20 x20 1
+                jal x21 CHECK_LOOP2
+                
+LOOP3:			addi x18 x18 -1
+				addi x20 x20 1
+                jal x21 CHECK_LOOP3
+
+
+END_CHECK:		addi x20 x20 -30		# Check if the number of counter is correct or not 
+				bne x20 x0 END
+
+				auipc x29 0				# Instruction check if the program run completely
+END:
+				auipc x30 0
